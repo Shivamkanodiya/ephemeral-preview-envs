@@ -15,8 +15,15 @@
 //   readyState 3 = disconnecting
 // ============================================
 const mongoose = require('mongoose');
+const dns = require('dns');
 const { logger } = require('../utils/logger');
 const config = require('../config');
+
+// Fix: Some ISPs/mobile carriers block MongoDB SRV DNS queries.
+// Use Google DNS as fallback in development.
+if (config.nodeEnv !== 'production') {
+  dns.setServers(['8.8.8.8', '8.8.4.4']);
+}
 
 // Track whether we ever attempted a connection (not whether we're connected)
 let connectionAttempted = false;
