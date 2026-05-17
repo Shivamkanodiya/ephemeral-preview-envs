@@ -175,6 +175,9 @@ class RenderService {
         buildCommand: 'npm install',
         startCommand: 'npm start',
         plan: 'free',
+        envSpecificDetails: {
+          nodeVersion: '18',
+        },
         envVars: [
           { key: 'NODE_ENV', value: 'preview' },
           { key: 'PR_NUMBER', value: String(prNumber) },
