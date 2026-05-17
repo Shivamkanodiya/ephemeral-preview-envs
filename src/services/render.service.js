@@ -172,11 +172,10 @@ class RenderService {
       autoDeploy: 'yes',
       serviceDetails: {
         env: 'node',
-        buildCommand: 'npm install',
-        startCommand: 'npm start',
         plan: 'free',
         envSpecificDetails: {
-          nodeVersion: '18',
+          buildCommand: 'npm install',
+          startCommand: 'npm start',
         },
         envVars: [
           { key: 'NODE_ENV', value: 'preview' },
