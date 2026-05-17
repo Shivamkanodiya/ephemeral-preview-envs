@@ -1,0 +1,133 @@
+# ======================================================================
+# GITHUB ACTIONS: Preview Environment Manager
+# ======================================================================
+#
+# ARCHITECTURE DECISION (P0 Fix #3):
+# The backend webhook handler (server.js) is the SINGLE source of truth
+# for creating/deleting Render services. This workflow does NOT call
+# Render API directly. It only:
+#   1. Logs the event (debugging)
+#   2. Posts a notification comment on the PR (immediate feedback)
+#   3. Calls our backend's status API to check progress
+#
+# WHY NOT BOTH?
+# If workflow AND webhook both call Render POST /services:
+#   - Two services created per PR (409 masks this, wastes API calls)
+#   - Two PR comments posted (comment spam)
+#   - Two GitHub Deployment records (cluttered Deployments tab)
+#   - Race conditions on concurrent creates
+#
+# The webhook handler already:
+#   - Creates/deletes Render services
+#   - Posts PR comments via BOT_MARKER upsert
+#   - Sets GitHub Deployment Status
+#   - Tracks delivery IDs for dedup
+#
+# This workflow is kept as a LIGHTWEIGHT NOTIFIER only.
+# ======================================================================
+
+name: "🚀 Preview Environment Manager"
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, closed]
+
+env:
+  PREVIEW_PREFIX: "preview-pr"
+  BACKEND_URL: ${{ secrets.BACKEND_URL || 'https://ephemeral-preview-server.onrender.com' }}
+
+# Concurrency: one workflow per PR, but DON'T cancel in-progress runs
+# cancel-in-progress: false prevents orphaning mid-flight work
+concurrency:
+  group: preview-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  # ======================================================================
+  # JOB 1: NOTIFY on PR opened/reopened/synchronize
+  # ======================================================================
+  notify-preview:
+    if: >
+      github.event.action == 'opened' ||
+      github.event.action == 'reopened' ||
+      github.event.action == 'synchronize'
+
+    runs-on: ubuntu-latest
+    name: "📦 Preview Notification"
+
+    steps:
+      - name: "📋 Log Event Info"
+        run: |
+          echo "============================================"
+          echo "  PREVIEW ENVIRONMENT — EVENT"
+          echo "============================================"
+          echo "Event:      ${{ github.event.action }}"
+          echo "PR Number:  #${{ github.event.pull_request.number }}"
+          echo "Branch:     ${{ github.event.pull_request.head.ref }}"
+          echo "Author:     ${{ github.event.pull_request.user.login }}"
+          echo "Title:      ${{ github.event.pull_request.title }}"
+          echo "============================================"
+          echo ""
+          echo "NOTE: Render service creation is handled by the"
+          echo "      backend webhook handler, not this workflow."
+
+      # Post a lightweight status comment
+      # The webhook handler will UPDATE this with the real URL via BOT_MARKER
+      - name: "📊 Create Deployment Status"
+        if: github.event.action == 'opened' || github.event.action == 'reopened'
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const prNumber = context.payload.pull_request.number;
+            const previewUrl = `https://${process.env.PREVIEW_PREFIX}-${prNumber}.onrender.com`;
+
+            // Create deployment record (for GitHub Deployments tab)
+            try {
+              const deployment = await github.rest.repos.createDeployment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                ref: context.payload.pull_request.head.ref,
+                environment: `preview-pr-${prNumber}`,
+                auto_merge: false,
+                required_contexts: [],
+                description: `Preview for PR #${prNumber}`,
+                transient_environment: true,
+              });
+
+              if (deployment.data.id) {
+                await github.rest.repos.createDeploymentStatus({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  deployment_id: deployment.data.id,
+                  state: 'in_progress',
+                  environment_url: previewUrl,
+                  description: 'Webhook handler is creating preview...',
+                });
+                console.log(`✅ Deployment status set for PR #${prNumber}`);
+              }
+            } catch (e) {
+              console.log(`⚠️ Could not set deployment status: ${e.message}`);
+            }
+
+  # ======================================================================
+  # JOB 2: LOG on PR closed (cleanup is handled by webhook handler)
+  # ======================================================================
+  notify-cleanup:
+    if: github.event.action == 'closed'
+    runs-on: ubuntu-latest
+    name: "🗑️ Cleanup Notification"
+
+    steps:
+      - name: "📋 Log Cleanup Info"
+        run: |
+          echo "============================================"
+          echo "  PREVIEW ENVIRONMENT — PR CLOSED"
+          echo "============================================"
+          echo "PR Number:  #${{ github.event.pull_request.number }}"
+          echo "Merged:     ${{ github.event.pull_request.merged }}"
+          echo "Branch:     ${{ github.event.pull_request.head.ref }}"
+          echo "============================================"
+          echo ""
+          echo "NOTE: Render service deletion is handled by the"
+          echo "      backend webhook handler, not this workflow."

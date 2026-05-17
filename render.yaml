@@ -1,0 +1,111 @@
+# ============================================================
+# Render Blueprint (render.yaml) — Phase 8 Production
+# ============================================================
+#
+# WHAT IS render.yaml?
+# Infrastructure-as-Code (IaC) for Render.com.
+# Commit this file → Render reads it → deploys automatically.
+# No clicking through dashboards. Reproducible. Version-controlled.
+#
+# BLUEPRINT FIELDS EXPLAINED:
+#
+# type: web
+#   → Creates a Web Service (HTTP-accessible, not a Background Worker)
+#   → Render assigns it a public URL: <name>.onrender.com
+#
+# env: docker
+#   → Use our Dockerfile instead of Render's buildpacks
+#   → Gives us full control over the runtime environment
+#   → Render auto-builds the image on every push to main
+#
+# plan: free
+#   → 750 hours/month free
+#   → Spins down after 15min inactivity (cold start ~30s)
+#   → Sufficient for a backend webhook receiver
+#
+# dockerfilePath
+#   → Path to our multi-stage Dockerfile
+#
+# healthCheckPath
+#   → Render polls this URL after deployment
+#   → If it returns non-2xx, Render marks deploy as failed
+#   → Prevents bad deploys from going live
+#
+# autoDeploy: true
+#   → Every push to the branch triggers a new deployment
+#   → Zero manual steps for continuous deployment
+#
+# sync: false
+#   → Secret values MUST be set manually in Render dashboard
+#   → Never put real secrets in render.yaml (it's committed to git!)
+#
+# generateValue: true
+#   → Render auto-generates a secure random string
+#   → Used for SESSION_SECRET — no manual config needed
+# ============================================================
+
+services:
+  - type: web
+    name: ephemeral-preview-server
+    env: docker                        # Use our Dockerfile (not buildpack)
+    plan: free
+    region: oregon                     # US-West — closest to GitHub's servers
+    branch: main                       # Deploy from main branch only
+    dockerfilePath: ./Dockerfile       # Explicit path to our Dockerfile
+    dockerContext: .                   # Build context = repo root
+
+    # ── Health Check ──────────────────────────────────────────
+    # Render checks this after every deploy.
+    # Must return 2xx within 60s or deploy is marked failed.
+    healthCheckPath: /api/health
+
+    # ── Scaling ───────────────────────────────────────────────
+    # Free tier = 1 instance max
+    # Upgrade to starter ($7/mo) for zero cold starts
+    numInstances: 1
+
+    # ── Auto Deploy ───────────────────────────────────────────
+    autoDeploy: true
+
+    # ── Environment Variables ─────────────────────────────────
+    # NEVER put real values here — this file is in git.
+    # sync: false means "ask me for the value in dashboard"
+    envVars:
+      # Runtime
+      - key: NODE_ENV
+        value: production
+
+      - key: PORT
+        value: 3000
+
+      - key: TRUST_PROXY
+        value: "true"         # Required: Render is behind a load balancer
+
+      # Render API (required for creating preview services)
+      - key: RENDER_API_KEY
+        sync: false           # Set in Render Dashboard > Environment
+
+      - key: RENDER_OWNER_ID
+        sync: false
+
+      # GitHub (required for webhook verification + PR comments)
+      - key: GITHUB_WEBHOOK_SECRET
+        sync: false
+
+      - key: GITHUB_TOKEN
+        sync: false
+
+      # MongoDB (optional — falls back to in-memory if not set)
+      - key: MONGODB_URI
+        sync: false
+
+      # CORS (optional — comma-separated allowed origins)
+      - key: CORS_ORIGINS
+        sync: false
+
+      # App
+      - key: PREVIEW_PREFIX
+        value: preview
+
+      - key: BASE_REPO_URL
+        sync: false

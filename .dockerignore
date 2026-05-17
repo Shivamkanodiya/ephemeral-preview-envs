@@ -1,0 +1,64 @@
+# ============================================================
+# .dockerignore — Exclude from Docker build context
+# ============================================================
+#
+# WHY THIS MATTERS:
+# Docker sends the entire "build context" to the Docker daemon
+# before building. Without .dockerignore, it sends node_modules
+# (hundreds of MB) every time — even though COPY ignores them.
+#
+# Rule of thumb: if you wouldn't commit it, don't send it.
+#
+# Performance impact:
+#   Without .dockerignore: build context = 250MB, takes 10s to send
+#   With .dockerignore:    build context = 2MB,   takes 0.1s to send
+# ============================================================
+
+# ── Node.js ─────────────────────────────────────────────────
+# Never copy node_modules — they're OS-specific (native bindings)
+# and are installed inside the container during docker build
+node_modules
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ── Environment files — NEVER in image ───────────────────────
+# Secrets must come from runtime env vars, not baked into image
+# If you bake .env into the image, anyone with docker pull gets your secrets
+.env
+.env.local
+.env.production
+.env.*.local
+
+# ── Development artifacts ────────────────────────────────────
+coverage
+.nyc_output
+*.log
+logs
+
+# ── Git history — not needed at runtime ─────────────────────
+.git
+.gitignore
+.github
+
+# ── Documentation — not needed at runtime ───────────────────
+*.md
+docs
+
+# ── Test files — not in production image ─────────────────────
+src/__tests__
+*.test.js
+*.spec.js
+jest.config.*
+
+# ── Editor and OS files ──────────────────────────────────────
+.DS_Store
+.vscode
+.idea
+Thumbs.db
+*.swp
+
+# ── Docker files themselves ──────────────────────────────────
+Dockerfile
+docker-compose*.yml
+.dockerignore

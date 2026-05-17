@@ -1,0 +1,57 @@
+# ======================================================================
+# GITHUB ACTIONS: CI — Run Tests on Every PR
+# ======================================================================
+#
+# WHY THIS EXISTS:
+#   Every PR should pass tests before it can be merged.
+#   This workflow runs the test suite automatically.
+#
+# OPTIMIZATION:
+#   - Only runs when source code changes (not on README edits)
+#   - Caches node_modules to speed up subsequent runs
+#   - Uses concurrency to cancel outdated runs
+#
+# ======================================================================
+
+name: "🧪 CI Tests"
+
+on:
+  pull_request:
+    paths:
+      - 'src/**'
+      - 'package*.json'
+  push:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'package*.json'
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    name: "Run Tests"
+
+    steps:
+      - name: "📥 Checkout Code"
+        uses: actions/checkout@v4
+
+      - name: "📦 Setup Node.js"
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: "📦 Install Dependencies"
+        run: npm ci
+
+      - name: "🧪 Run Tests"
+        run: npm test -- --coverage
+
+      - name: "📊 Test Summary"
+        if: always()
+        run: |
+          echo "✅ Test run complete"
