@@ -1,0 +1,666 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ephemeral Preview Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg-primary: #0a0e1a;
+      --bg-secondary: #111827;
+      --bg-card: #1a1f35;
+      --bg-card-hover: #222845;
+      --border: #2a3050;
+      --text-primary: #e2e8f0;
+      --text-secondary: #94a3b8;
+      --text-muted: #64748b;
+      --accent-green: #10b981;
+      --accent-blue: #3b82f6;
+      --accent-yellow: #f59e0b;
+      --accent-red: #ef4444;
+      --accent-purple: #8b5cf6;
+      --accent-gray: #6b7280;
+      --gradient-start: #3b82f6;
+      --gradient-end: #8b5cf6;
+      --shadow: 0 4px 24px rgba(0, 0, 0, 0.3);
+      --radius: 12px;
+      --radius-sm: 8px;
+    }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      min-height: 100vh;
+      line-height: 1.6;
+    }
+
+    /* ── HEADER ─────────────────────────────── */
+    .header {
+      background: linear-gradient(135deg, var(--bg-secondary), var(--bg-card));
+      border-bottom: 1px solid var(--border);
+      padding: 20px 32px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      backdrop-filter: blur(12px);
+    }
+
+    .header-left {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .logo {
+      width: 40px;
+      height: 40px;
+      background: linear-gradient(135deg, var(--gradient-start), var(--gradient-end));
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+    }
+
+    .header h1 {
+      font-size: 1.3rem;
+      font-weight: 600;
+      background: linear-gradient(135deg, var(--gradient-start), var(--gradient-end));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .header-right {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .status-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--accent-green);
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.4); }
+      50% { opacity: 0.8; box-shadow: 0 0 0 8px rgba(16, 185, 129, 0); }
+    }
+
+    .refresh-btn {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      color: var(--text-secondary);
+      padding: 8px 16px;
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      font-size: 0.85rem;
+      font-family: inherit;
+      transition: all 0.2s;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .refresh-btn:hover {
+      background: var(--bg-card-hover);
+      color: var(--text-primary);
+      border-color: var(--accent-blue);
+    }
+
+    .refresh-btn.loading { opacity: 0.6; pointer-events: none; }
+
+    /* ── MAIN CONTENT ──────────────────────── */
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 28px 32px;
+    }
+
+    /* ── STATS GRID ────────────────────────── */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 16px;
+      margin-bottom: 32px;
+    }
+
+    .stat-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px;
+      transition: all 0.3s ease;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .stat-card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 3px;
+      background: linear-gradient(90deg, var(--card-accent, var(--accent-blue)), transparent);
+    }
+
+    .stat-card:hover {
+      transform: translateY(-2px);
+      box-shadow: var(--shadow);
+      border-color: var(--card-accent, var(--accent-blue));
+    }
+
+    .stat-label {
+      font-size: 0.78rem;
+      font-weight: 500;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-muted);
+      margin-bottom: 8px;
+    }
+
+    .stat-value {
+      font-size: 2rem;
+      font-weight: 700;
+      color: var(--text-primary);
+    }
+
+    .stat-sub {
+      font-size: 0.78rem;
+      color: var(--text-muted);
+      margin-top: 4px;
+    }
+
+    /* ── SECTION ────────────────────────────── */
+    .section {
+      margin-bottom: 32px;
+    }
+
+    .section-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 16px;
+    }
+
+    .section-title {
+      font-size: 1.1rem;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .badge {
+      font-size: 0.7rem;
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 20px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .badge-green { background: rgba(16, 185, 129, 0.15); color: var(--accent-green); }
+    .badge-blue { background: rgba(59, 130, 246, 0.15); color: var(--accent-blue); }
+    .badge-yellow { background: rgba(245, 158, 11, 0.15); color: var(--accent-yellow); }
+    .badge-red { background: rgba(239, 68, 68, 0.15); color: var(--accent-red); }
+    .badge-gray { background: rgba(107, 114, 128, 0.15); color: var(--accent-gray); }
+    .badge-purple { background: rgba(139, 92, 246, 0.15); color: var(--accent-purple); }
+
+    /* ── PREVIEW CARDS ─────────────────────── */
+    .preview-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+      gap: 16px;
+    }
+
+    .preview-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px;
+      transition: all 0.3s ease;
+      position: relative;
+    }
+
+    .preview-card:hover {
+      transform: translateY(-2px);
+      box-shadow: var(--shadow);
+      border-color: var(--accent-blue);
+    }
+
+    .preview-card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 14px;
+    }
+
+    .pr-number {
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: var(--accent-blue);
+    }
+
+    .preview-card-body {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .preview-field {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.85rem;
+    }
+
+    .preview-field-label {
+      color: var(--text-muted);
+    }
+
+    .preview-field-value {
+      color: var(--text-secondary);
+      font-weight: 500;
+      max-width: 200px;
+      text-overflow: ellipsis;
+      overflow: hidden;
+      white-space: nowrap;
+    }
+
+    .preview-url {
+      display: block;
+      margin-top: 14px;
+      padding: 10px 16px;
+      background: rgba(59, 130, 246, 0.1);
+      border: 1px solid rgba(59, 130, 246, 0.2);
+      border-radius: var(--radius-sm);
+      color: var(--accent-blue);
+      text-decoration: none;
+      font-size: 0.85rem;
+      font-weight: 500;
+      text-align: center;
+      transition: all 0.2s;
+    }
+
+    .preview-url:hover {
+      background: rgba(59, 130, 246, 0.2);
+      border-color: var(--accent-blue);
+    }
+
+    /* ── AUDIT TABLE ───────────────────────── */
+    .audit-table-wrap {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+    }
+
+    .audit-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.85rem;
+    }
+
+    .audit-table th {
+      text-align: left;
+      padding: 14px 16px;
+      background: var(--bg-secondary);
+      color: var(--text-muted);
+      font-weight: 600;
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .audit-table td {
+      padding: 12px 16px;
+      border-bottom: 1px solid rgba(42, 48, 80, 0.5);
+      color: var(--text-secondary);
+    }
+
+    .audit-table tr:hover td {
+      background: var(--bg-card-hover);
+    }
+
+    .audit-table tr:last-child td { border-bottom: none; }
+
+    /* ── EMPTY STATE ────────────────────────── */
+    .empty-state {
+      text-align: center;
+      padding: 48px 20px;
+      color: var(--text-muted);
+    }
+
+    .empty-state-icon {
+      font-size: 3rem;
+      margin-bottom: 12px;
+      opacity: 0.5;
+    }
+
+    .empty-state-text {
+      font-size: 0.95rem;
+      margin-bottom: 6px;
+    }
+
+    .empty-state-hint {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+    }
+
+    /* ── LOADING ────────────────────────────── */
+    .skeleton {
+      background: linear-gradient(90deg, var(--bg-card) 25%, var(--bg-card-hover) 50%, var(--bg-card) 75%);
+      background-size: 200% 100%;
+      animation: shimmer 1.5s infinite;
+      border-radius: var(--radius-sm);
+    }
+
+    @keyframes shimmer {
+      0% { background-position: 200% 0; }
+      100% { background-position: -200% 0; }
+    }
+
+    /* ── FOOTER ─────────────────────────────── */
+    .footer {
+      text-align: center;
+      padding: 24px;
+      color: var(--text-muted);
+      font-size: 0.78rem;
+      border-top: 1px solid var(--border);
+      margin-top: 32px;
+    }
+
+    .footer a {
+      color: var(--accent-blue);
+      text-decoration: none;
+    }
+
+    /* ── RESPONSIVE ─────────────────────────── */
+    @media (max-width: 768px) {
+      .header { padding: 16px 20px; }
+      .container { padding: 20px 16px; }
+      .stats-grid { grid-template-columns: repeat(2, 1fr); }
+      .preview-grid { grid-template-columns: 1fr; }
+      .header h1 { font-size: 1.1rem; }
+    }
+
+    /* ── TIME AGO ───────────────────────────── */
+    .time-ago { color: var(--text-muted); font-size: 0.78rem; }
+  </style>
+</head>
+<body>
+
+  <!-- HEADER -->
+  <header class="header">
+    <div class="header-left">
+      <div class="logo">🚀</div>
+      <h1>Ephemeral Preview Dashboard</h1>
+    </div>
+    <div class="header-right">
+      <div class="status-dot" id="statusDot" title="Server status"></div>
+      <span id="serverStatus" style="font-size:0.8rem;color:var(--text-muted)">Connected</span>
+      <button class="refresh-btn" id="refreshBtn" onclick="refreshAll()">
+        ↻ Refresh
+      </button>
+    </div>
+  </header>
+
+  <!-- MAIN -->
+  <main class="container">
+
+    <!-- STATS -->
+    <div class="stats-grid" id="statsGrid">
+      <div class="stat-card" style="--card-accent: var(--accent-green);">
+        <div class="stat-label">Active Previews</div>
+        <div class="stat-value" id="statActive">-</div>
+        <div class="stat-sub">Currently running</div>
+      </div>
+      <div class="stat-card" style="--card-accent: var(--accent-blue);">
+        <div class="stat-label">Total Deployments</div>
+        <div class="stat-value" id="statTotal">-</div>
+        <div class="stat-sub">All time</div>
+      </div>
+      <div class="stat-card" style="--card-accent: var(--accent-red);">
+        <div class="stat-label">Failed</div>
+        <div class="stat-value" id="statFailed">-</div>
+        <div class="stat-sub">Deployment failures</div>
+      </div>
+      <div class="stat-card" style="--card-accent: var(--accent-purple);">
+        <div class="stat-label">Server Uptime</div>
+        <div class="stat-value" id="statUptime">-</div>
+        <div class="stat-sub" id="statVersion">v1.0.0</div>
+      </div>
+    </div>
+
+    <!-- ACTIVE PREVIEWS -->
+    <section class="section">
+      <div class="section-header">
+        <div class="section-title">
+          🟢 Active Previews
+          <span class="badge badge-green" id="activeCount">0</span>
+        </div>
+      </div>
+      <div class="preview-grid" id="previewGrid">
+        <div class="empty-state">
+          <div class="empty-state-icon">📭</div>
+          <div class="empty-state-text">No active previews</div>
+          <div class="empty-state-hint">Open a Pull Request to create one</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- DEPLOYMENT HISTORY -->
+    <section class="section">
+      <div class="section-header">
+        <div class="section-title">
+          📋 Deployment History
+          <span class="badge badge-purple" id="historyCount">0</span>
+        </div>
+      </div>
+      <div class="audit-table-wrap">
+        <table class="audit-table" id="auditTable">
+          <thead>
+            <tr>
+              <th>PR</th>
+              <th>Branch</th>
+              <th>Status</th>
+              <th>URL</th>
+              <th>Created</th>
+              <th>Last Updated</th>
+            </tr>
+          </thead>
+          <tbody id="auditBody">
+            <tr>
+              <td colspan="6" style="text-align:center;padding:32px;color:var(--text-muted)">
+                Loading...
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- FOOTER -->
+  <footer class="footer">
+    Ephemeral Preview Bot — powered by
+    <a href="https://render.com" target="_blank">Render</a>
+    · Auto-refreshes every 30 seconds
+  </footer>
+
+  <script>
+    // ── CONFIG ──────────────────────────────
+    const API_BASE = window.location.origin;
+    const REFRESH_INTERVAL = 30000; // 30s
+
+    // ── HELPERS ─────────────────────────────
+    function timeAgo(dateStr) {
+      if (!dateStr) return 'N/A';
+      const seconds = Math.floor((Date.now() - new Date(dateStr).getTime()) / 1000);
+      if (seconds < 60)   return `${seconds}s ago`;
+      if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
+      if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
+      return `${Math.floor(seconds / 86400)}d ago`;
+    }
+
+    function formatUptime(seconds) {
+      if (!seconds) return '-';
+      const h = Math.floor(seconds / 3600);
+      const m = Math.floor((seconds % 3600) / 60);
+      if (h > 0) return `${h}h ${m}m`;
+      return `${m}m`;
+    }
+
+    function statusBadge(status) {
+      const map = {
+        active:    { class: 'badge-green',  text: 'Live' },
+        creating:  { class: 'badge-yellow', text: 'Creating' },
+        building:  { class: 'badge-yellow', text: 'Building' },
+        sleeping:  { class: 'badge-blue',   text: 'Sleeping' },
+        failed:    { class: 'badge-red',    text: 'Failed' },
+        destroyed: { class: 'badge-gray',   text: 'Destroyed' },
+        deleting:  { class: 'badge-yellow', text: 'Deleting' },
+      };
+      const s = map[status] || { class: 'badge-gray', text: status };
+      return `<span class="badge ${s.class}">${s.text}</span>`;
+    }
+
+    // ── FETCH DATA ──────────────────────────
+    async function fetchJSON(path) {
+      try {
+        const res = await fetch(`${API_BASE}${path}`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return await res.json();
+      } catch (err) {
+        console.error(`Fetch ${path} failed:`, err);
+        return null;
+      }
+    }
+
+    // ── RENDER STATS ────────────────────────
+    async function loadHealth() {
+      const data = await fetchJSON('/api/health');
+      if (!data) {
+        document.getElementById('statusDot').style.background = 'var(--accent-red)';
+        document.getElementById('serverStatus').textContent = 'Disconnected';
+        return;
+      }
+
+      document.getElementById('statusDot').style.background = 'var(--accent-green)';
+      document.getElementById('serverStatus').textContent = 'Connected';
+      document.getElementById('statUptime').textContent = formatUptime(data.uptime);
+      document.getElementById('statVersion').textContent = `v${data.version || '1.0.0'}`;
+    }
+
+    // ── RENDER ACTIVE PREVIEWS ──────────────
+    async function loadPreviews() {
+      const data = await fetchJSON('/api/previews');
+      if (!data) return;
+
+      const stats = data.stats || {};
+      document.getElementById('statActive').textContent = stats.active || 0;
+      document.getElementById('statTotal').textContent = stats.total || 0;
+      document.getElementById('statFailed').textContent = stats.failed || 0;
+      document.getElementById('activeCount').textContent = stats.active || 0;
+
+      const grid = document.getElementById('previewGrid');
+      const active = (data.active || []);
+
+      if (active.length === 0) {
+        grid.innerHTML = `
+          <div class="empty-state">
+            <div class="empty-state-icon">📭</div>
+            <div class="empty-state-text">No active previews</div>
+            <div class="empty-state-hint">Open a Pull Request to create one</div>
+          </div>`;
+        return;
+      }
+
+      grid.innerHTML = active.map(p => `
+        <div class="preview-card">
+          <div class="preview-card-header">
+            <span class="pr-number">PR #${p.prNumber}</span>
+            ${statusBadge(p.status)}
+          </div>
+          <div class="preview-card-body">
+            <div class="preview-field">
+              <span class="preview-field-label">Branch</span>
+              <span class="preview-field-value">${p.branch || '-'}</span>
+            </div>
+            <div class="preview-field">
+              <span class="preview-field-label">Author</span>
+              <span class="preview-field-value">${p.author || '-'}</span>
+            </div>
+            <div class="preview-field">
+              <span class="preview-field-label">Builds</span>
+              <span class="preview-field-value">${p.buildCount || 1}</span>
+            </div>
+            <div class="preview-field">
+              <span class="preview-field-label">Created</span>
+              <span class="preview-field-value time-ago">${timeAgo(p.createdAt)}</span>
+            </div>
+          </div>
+          ${p.url ? `<a class="preview-url" href="${p.url}" target="_blank">🔗 Open Preview →</a>` : ''}
+        </div>
+      `).join('');
+    }
+
+    // ── RENDER AUDIT LOG ────────────────────
+    async function loadAudit() {
+      const data = await fetchJSON('/api/previews/audit');
+      if (!data) return;
+
+      const deployments = data.deployments || [];
+      document.getElementById('historyCount').textContent = deployments.length;
+
+      const tbody = document.getElementById('auditBody');
+
+      if (deployments.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:32px;color:var(--text-muted)">No deployment history</td></tr>`;
+        return;
+      }
+
+      tbody.innerHTML = deployments.slice(0, 20).map(d => `
+        <tr>
+          <td><strong style="color:var(--accent-blue)">PR #${d.prNumber}</strong></td>
+          <td>${d.branch || '-'}</td>
+          <td>${statusBadge(d.status)}</td>
+          <td>${d.url ? `<a href="${d.url}" target="_blank" style="color:var(--accent-blue);text-decoration:none">${d.url.replace('https://', '')}</a>` : '-'}</td>
+          <td class="time-ago">${timeAgo(d.createdAt)}</td>
+          <td class="time-ago">${timeAgo(d.updatedAt)}</td>
+        </tr>
+      `).join('');
+    }
+
+    // ── REFRESH ALL ─────────────────────────
+    async function refreshAll() {
+      const btn = document.getElementById('refreshBtn');
+      btn.classList.add('loading');
+      btn.textContent = '↻ Loading...';
+
+      await Promise.all([loadHealth(), loadPreviews(), loadAudit()]);
+
+      btn.classList.remove('loading');
+      btn.innerHTML = '↻ Refresh';
+    }
+
+    // ── INIT ────────────────────────────────
+    refreshAll();
+    setInterval(refreshAll, REFRESH_INTERVAL);
+  </script>
+</body>
+</html>

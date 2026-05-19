@@ -18,6 +18,10 @@
 // This is how production webhook receivers work:
 //   Shopify, Stripe, Twilio — all respond 2xx first,
 //   then process in background.
+//
+// SUPPORTED EVENTS:
+//   pull_request  → PR opened/closed/synchronize
+//   issue_comment → /preview slash commands
 // ============================================
 const express = require('express');
 const router = express.Router();
@@ -25,6 +29,22 @@ const { verifyGitHubWebhook } = require('../middleware/webhook.middleware');
 const previewController = require('../controllers/preview.controller');
 const { isDuplicateDelivery, markDeliveryProcessed } = require('../store/delivery.store');
 const { logger } = require('../utils/logger');
+
+// ============================================
+// SLASH COMMANDS
+// ============================================
+// Users can comment on PRs with these commands:
+//   /preview          → Trigger a preview deployment
+//   /preview destroy  → Manually destroy the preview
+//   /preview status   → Show current preview status
+//
+// The bot replies with a comment confirming the action.
+// ============================================
+const SLASH_COMMANDS = {
+  DEPLOY:  /^\/preview\s*$/i,
+  DESTROY: /^\/preview\s+destroy\s*$/i,
+  STATUS:  /^\/preview\s+status\s*$/i,
+};
 
 /**
  * POST /api/webhooks/github
@@ -39,14 +59,26 @@ router.post('/github', verifyGitHubWebhook, async (req, res) => {
 
   logger.info(`📩 Webhook received: event=${event} action=${action} delivery=${delivery}`);
 
-  // ── Ignore non-PR events synchronously ──────────────────────
-  if (event !== 'pull_request') {
-    return res.status(200).json({
-      message: `Ignored event: ${event}`,
-      hint: 'Only pull_request events are processed',
-    });
+  // ── Route by event type ─────────────────────────────────────
+  if (event === 'pull_request') {
+    return handlePullRequestEvent(req, res, action, delivery);
   }
 
+  if (event === 'issue_comment') {
+    return handleIssueCommentEvent(req, res, action, delivery);
+  }
+
+  // ── Ignore all other events ─────────────────────────────────
+  return res.status(200).json({
+    message: `Ignored event: ${event}`,
+    hint: 'Only pull_request and issue_comment events are processed',
+  });
+});
+
+// ============================================
+// PULL REQUEST EVENT HANDLER
+// ============================================
+async function handlePullRequestEvent(req, res, action, delivery) {
   // ── Validate payload synchronously ──────────────────────────
   if (!req.body.pull_request || !req.body.repository) {
     return res.status(400).json({ error: 'Invalid PR payload structure' });
@@ -62,9 +94,6 @@ router.post('/github', verifyGitHubWebhook, async (req, res) => {
   }
 
   // ── DEDUP CHECK: Reject replayed deliveries ─────────────────
-  // GitHub sends X-GitHub-Delivery as a unique UUID per webhook.
-  // If we've seen this ID before, skip processing entirely.
-  // Return 200 (not 4xx) — GitHub retries on non-2xx codes.
   const duplicate = await isDuplicateDelivery(delivery);
   if (duplicate) {
     logger.warn(`🔁 Duplicate delivery=${delivery} — skipping (already processed)`);
@@ -74,11 +103,8 @@ router.post('/github', verifyGitHubWebhook, async (req, res) => {
     });
   }
 
-  // ── Mark delivery as processed BEFORE async work ────────────
-  // This prevents a second delivery arriving during our async
-  // processing from being accepted too.
   const prNumber = req.body.pull_request.number;
-  await markDeliveryProcessed(delivery, { event, action, prNumber });
+  await markDeliveryProcessed(delivery, { event: 'pull_request', action, prNumber });
 
   // ── Respond 202 IMMEDIATELY ─────────────────────────────────
   res.status(202).json({
@@ -89,9 +115,6 @@ router.post('/github', verifyGitHubWebhook, async (req, res) => {
   });
 
   // ── Process asynchronously ──────────────────────────────────
-  // setImmediate defers execution to the next event loop tick.
-  // The HTTP response is already sent at this point.
-  // Any errors here won't crash the request (it's already done).
   setImmediate(() => {
     processWebhookAsync(action, req.body, delivery).catch((error) => {
       logger.error(`Async webhook processing failed for delivery=${delivery}: ${error.message}`, {
@@ -100,12 +123,78 @@ router.post('/github', verifyGitHubWebhook, async (req, res) => {
         prNumber,
         stack: error.stack,
       });
-      // Error is logged but cannot be sent to GitHub —
-      // the response is already sent. This is by design.
-      // Check logs or deployment store status for failures.
     });
   });
-});
+}
+
+// ============================================
+// ISSUE COMMENT EVENT HANDLER (Slash Commands)
+// ============================================
+async function handleIssueCommentEvent(req, res, action, delivery) {
+  // Only process newly created comments (not edits or deletes)
+  if (action !== 'created') {
+    return res.status(200).json({ message: 'Ignored comment action: ' + action });
+  }
+
+  const comment = req.body.comment;
+  const issue = req.body.issue;
+
+  // Only process comments on PRs (issues have no pull_request key)
+  if (!issue?.pull_request) {
+    return res.status(200).json({ message: 'Ignored: comment is not on a PR' });
+  }
+
+  // Extract comment body and check for slash command
+  const body = (comment?.body || '').trim();
+  let command = null;
+
+  if (SLASH_COMMANDS.DESTROY.test(body)) {
+    command = 'destroy';
+  } else if (SLASH_COMMANDS.STATUS.test(body)) {
+    command = 'status';
+  } else if (SLASH_COMMANDS.DEPLOY.test(body)) {
+    command = 'deploy';
+  }
+
+  if (!command) {
+    return res.status(200).json({ message: 'No slash command found in comment' });
+  }
+
+  // ── DEDUP CHECK ─────────────────────────────────────────────
+  const duplicate = await isDuplicateDelivery(delivery);
+  if (duplicate) {
+    return res.status(200).json({ message: 'Duplicate delivery', delivery });
+  }
+
+  const prNumber = issue.number;
+  const owner = req.body.repository.owner.login;
+  const repo = req.body.repository.name;
+
+  await markDeliveryProcessed(delivery, { event: 'issue_comment', command, prNumber });
+
+  logger.info(`🎮 Slash command: /${command} on PR #${prNumber} by ${comment.user?.login}`);
+
+  // ── Respond 202 IMMEDIATELY ─────────────────────────────────
+  res.status(202).json({
+    message: `Command "/${command}" accepted for PR #${prNumber}`,
+    delivery,
+    command,
+    prNumber,
+  });
+
+  // ── Process command asynchronously ──────────────────────────
+  setImmediate(() => {
+    processSlashCommand(command, req.body, delivery).catch((error) => {
+      logger.error(`Slash command failed: /${command} on PR #${prNumber}: ${error.message}`, {
+        delivery, command, prNumber, stack: error.stack,
+      });
+    });
+  });
+}
+
+// ============================================
+// ASYNC PROCESSORS
+// ============================================
 
 /**
  * Process webhook payload asynchronously (after 202 response).
@@ -134,4 +223,93 @@ async function processWebhookAsync(action, payload, delivery) {
   }
 }
 
+/**
+ * Process slash commands from PR comments.
+ * Builds a synthetic payload matching handlePROpened/handlePRClosed format.
+ */
+async function processSlashCommand(command, payload, delivery) {
+  const prNumber = payload.issue.number;
+  const owner = payload.repository.owner.login;
+  const repo = payload.repository.name;
+  const githubService = require('../services/github.service');
+
+  switch (command) {
+    case 'deploy': {
+      // Fetch PR details to build a proper payload
+      const prDetails = await fetchPRDetails(owner, repo, prNumber);
+      if (!prDetails) {
+        await githubService.upsertComment(owner, repo, prNumber,
+          `⚠️ Could not fetch PR details for #${prNumber}. Is the PR still open?`
+        );
+        return;
+      }
+      // Build synthetic payload matching pull_request event format
+      const syntheticPayload = {
+        action: 'opened',
+        pull_request: prDetails,
+        repository: payload.repository,
+      };
+      await previewController.handlePROpened(syntheticPayload);
+      logger.info(`✅ /preview deploy completed for PR #${prNumber}`);
+      break;
+    }
+
+    case 'destroy': {
+      const syntheticPayload = {
+        action: 'closed',
+        pull_request: {
+          number: prNumber,
+          merged: false,
+          head: { ref: 'unknown' },
+          user: { login: payload.comment.user?.login },
+        },
+        repository: payload.repository,
+      };
+      await previewController.handlePRClosed(syntheticPayload);
+      logger.info(`✅ /preview destroy completed for PR #${prNumber}`);
+      break;
+    }
+
+    case 'status': {
+      const { deploymentStore } = require('../store/deployment.store');
+      const record = await deploymentStore.get(prNumber);
+
+      let statusMsg;
+      if (!record) {
+        statusMsg = `📋 **Preview Status — PR #${prNumber}**\n\nNo preview environment found. Comment \`/preview\` to create one.`;
+      } else {
+        statusMsg = [
+          `📋 **Preview Status — PR #${prNumber}**\n`,
+          `| Field | Value |`,
+          `|-------|-------|`,
+          `| Status | ${record.status} |`,
+          `| URL | ${record.url || 'N/A'} |`,
+          `| Branch | ${record.branch || 'N/A'} |`,
+          `| Builds | ${record.buildCount || 0} |`,
+          `| Created | ${record.createdAt ? new Date(record.createdAt).toUTCString() : 'N/A'} |`,
+        ].join('\n');
+      }
+
+      await githubService.upsertComment(owner, repo, prNumber, statusMsg);
+      logger.info(`✅ /preview status posted for PR #${prNumber}`);
+      break;
+    }
+  }
+}
+
+/**
+ * Fetch PR details from GitHub API (needed for /preview deploy command)
+ */
+async function fetchPRDetails(owner, repo, prNumber) {
+  try {
+    const githubService = require('../services/github.service');
+    const response = await githubService.client.get(`/repos/${owner}/${repo}/pulls/${prNumber}`);
+    return response.data;
+  } catch (error) {
+    logger.error(`Failed to fetch PR #${prNumber} details: ${error.message}`);
+    return null;
+  }
+}
+
 module.exports = router;
+

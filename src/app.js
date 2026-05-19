@@ -22,6 +22,7 @@ const express = require('express');
 const helmet  = require('helmet');
 const cors    = require('cors');
 const rateLimit = require('express-rate-limit');
+const path     = require('path');
 const { logger }   = require('./utils/logger');
 const { AppError } = require('./utils/errors');
 const config = require('./config');
@@ -59,15 +60,15 @@ if (config.security.trustProxy) {
 // ─────────────────────────────────────────────────────────────
 app.use(
   helmet({
-    // Content Security Policy — strict for a pure API (no HTML)
+    // Content Security Policy — relaxed for dashboard, strict for API
     contentSecurityPolicy: {
       directives: {
-        defaultSrc:  ["'none'"],      // Block all content by default
-        scriptSrc:   ["'none'"],      // No scripts allowed
-        styleSrc:    ["'none'"],      // No styles allowed
-        imgSrc:      ["'none'"],      // No images
-        connectSrc:  ["'self'"],      // Only allow API to talk to itself
-        fontSrc:     ["'none'"],
+        defaultSrc:  ["'self'"],
+        scriptSrc:   ["'self'", "'unsafe-inline'"],   // Dashboard inline scripts
+        styleSrc:    ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+        imgSrc:      ["'self'", "data:"],
+        connectSrc:  ["'self'"],
+        fontSrc:     ["'self'", "https://fonts.gstatic.com"],
         objectSrc:   ["'none'"],
         mediaSrc:    ["'none'"],
         frameSrc:    ["'none'"],
@@ -246,6 +247,12 @@ app.use((req, res, next) => {
 app.use('/api/health',   healthRoutes);
 app.use('/api/webhooks', webhookLimiter, webhookRoutes);
 app.use('/api/previews', apiLimiter,     previewRoutes);
+
+// ── Dashboard UI (served from /public) ─────────────────────
+app.use(express.static(path.join(__dirname, 'public')));
+app.get('/dashboard', (_req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
 
 // ============================================================
 // 8. 404 Handler

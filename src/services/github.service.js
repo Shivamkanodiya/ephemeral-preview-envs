@@ -482,6 +482,114 @@ class GitHubService {
     };
     return descriptions[state] || state;
   }
+
+  // ============================================
+  // AUTO-LABEL MANAGEMENT
+  // ============================================
+  // Automatically adds/removes labels on PRs based on
+  // preview environment status. Labels are created with
+  // distinct colors on first use.
+  //
+  // Label lifecycle:
+  //   PR opened      → add "preview-deploying" (yellow)
+  //   Build ready    → remove "preview-deploying", add "preview-live" (green)
+  //   Build failed   → remove "preview-deploying", add "preview-failed" (red)
+  //   PR closed      → remove all preview labels, add "preview-destroyed" (gray)
+  // ============================================
+
+  // Label definitions with colors
+  static LABELS = {
+    DEPLOYING: { name: 'preview-deploying', color: 'fbca04', description: '⏳ Preview environment is being deployed' },
+    LIVE:      { name: 'preview-live',      color: '0e8a16', description: '✅ Preview environment is live' },
+    FAILED:    { name: 'preview-failed',    color: 'e11d48', description: '❌ Preview environment failed' },
+    DESTROYED: { name: 'preview-destroyed', color: '6b7280', description: '🧹 Preview environment was cleaned up' },
+  };
+
+  /**
+   * Ensure a label exists in the repo (create if missing)
+   */
+  async _ensureLabelExists(owner, repo, label) {
+    try {
+      await this.client.get(`/repos/${owner}/${repo}/labels/${encodeURIComponent(label.name)}`);
+    } catch (error) {
+      if (error.response?.status === 404) {
+        try {
+          await this.client.post(`/repos/${owner}/${repo}/labels`, {
+            name: label.name,
+            color: label.color,
+            description: label.description,
+          });
+          logger.info(`🏷️ Created label: ${label.name}`);
+        } catch (createError) {
+          // 422 = label already exists (race condition)
+          if (createError.response?.status !== 422) {
+            logger.warn(`Failed to create label ${label.name}: ${createError.message}`);
+          }
+        }
+      }
+    }
+  }
+
+  /**
+   * Add a label to a PR
+   */
+  async addLabel(owner, repo, prNumber, label) {
+    try {
+      await this._ensureLabelExists(owner, repo, label);
+      await this.client.post(`/repos/${owner}/${repo}/issues/${prNumber}/labels`, {
+        labels: [label.name],
+      });
+      logger.debug(`🏷️ Added label "${label.name}" to PR #${prNumber}`);
+    } catch (error) {
+      // Non-critical — don't crash the flow
+      logger.warn(`Failed to add label ${label.name} to PR #${prNumber}: ${error.message}`);
+    }
+  }
+
+  /**
+   * Remove a label from a PR
+   */
+  async removeLabel(owner, repo, prNumber, label) {
+    try {
+      await this.client.delete(
+        `/repos/${owner}/${repo}/issues/${prNumber}/labels/${encodeURIComponent(label.name)}`
+      );
+      logger.debug(`🏷️ Removed label "${label.name}" from PR #${prNumber}`);
+    } catch (error) {
+      // 404 = label not on this PR — that's fine
+      if (error.response?.status !== 404) {
+        logger.warn(`Failed to remove label ${label.name} from PR #${prNumber}: ${error.message}`);
+      }
+    }
+  }
+
+  /**
+   * Remove all preview labels from a PR
+   */
+  async _removeAllPreviewLabels(owner, repo, prNumber) {
+    const allLabels = Object.values(GitHubService.LABELS);
+    await Promise.all(allLabels.map(label => this.removeLabel(owner, repo, prNumber, label)));
+  }
+
+  /**
+   * Update PR labels based on preview status
+   * Removes old labels and adds the new one
+   */
+  async updatePreviewLabels(owner, repo, prNumber, status) {
+    await this._removeAllPreviewLabels(owner, repo, prNumber);
+
+    const labelMap = {
+      deploying: GitHubService.LABELS.DEPLOYING,
+      live:      GitHubService.LABELS.LIVE,
+      failed:    GitHubService.LABELS.FAILED,
+      destroyed: GitHubService.LABELS.DESTROYED,
+    };
+
+    const label = labelMap[status];
+    if (label) {
+      await this.addLabel(owner, repo, prNumber, label);
+    }
+  }
 }
 
 module.exports = new GitHubService();

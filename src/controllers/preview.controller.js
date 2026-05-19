@@ -72,6 +72,9 @@ class PreviewController {
     // ── Set GitHub Deployment Status to in_progress ──────────────
     await githubService.createDeploymentStatus(owner, repo, prNumber, 'in_progress');
 
+    // ── Auto-label PR as deploying ───────────────────────────────
+    await githubService.updatePreviewLabels(owner, repo, prNumber, 'deploying');
+
     // ── Store record with CREATING status ────────────────────────
     await deploymentStore.create({
       prNumber, branch, repoUrl, owner, repo, author, prTitle,
@@ -98,6 +101,9 @@ class PreviewController {
         await githubService.createDeploymentStatus(
           owner, repo, prNumber, 'success', result.url
         );
+
+        // ── Auto-label PR as live ─────────────────────────────────
+        await githubService.updatePreviewLabels(owner, repo, prNumber, 'live');
       }
 
       return result;
@@ -106,6 +112,9 @@ class PreviewController {
       await deploymentStore.markFailed(prNumber, error.message);
       await githubService.postFailedComment(owner, repo, prNumber, error.message);
       await githubService.createDeploymentStatus(owner, repo, prNumber, 'failure');
+
+      // ── Auto-label PR as failed ─────────────────────────────────
+      await githubService.updatePreviewLabels(owner, repo, prNumber, 'failed');
       throw error;
     }
   }
@@ -196,6 +205,9 @@ class PreviewController {
 
       // ── Set Deployment Status to inactive ───────────────────
       await githubService.createDeploymentStatus(owner, repo, prNumber, 'inactive');
+
+      // ── Auto-label PR as destroyed ──────────────────────────────
+      await githubService.updatePreviewLabels(owner, repo, prNumber, 'destroyed');
 
       return { ...result, merged };
     } catch (error) {
