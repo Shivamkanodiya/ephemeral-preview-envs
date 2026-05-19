@@ -81,6 +81,11 @@ services:
       - key: TRUST_PROXY
         value: "true"         # Required: Render is behind a load balancer
 
+      # Fix: mongoose 9.x / mongodb-driver 6.x uses WebCrypto API (crypto.subtle)
+      # Node 18 requires this flag; Node 20+ has it as a global by default
+      - key: NODE_OPTIONS
+        value: "--experimental-global-webcrypto"
+
       # Render API (required for creating preview services)
       - key: RENDER_API_KEY
         sync: false           # Set in Render Dashboard > Environment
