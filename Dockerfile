@@ -20,9 +20,9 @@
 
 # ── Stage 1: deps ─────────────────────────────────────────
 # Purpose: Install all dependencies (including devDeps)
-# Why node:18-alpine? Alpine Linux = 5MB base vs 900MB Debian
-# Alpine has musl libc instead of glibc — smaller, secure
-FROM node:18-alpine AS deps
+# Why node:20-alpine? Alpine Linux = 5MB base vs 900MB Debian
+# Node 20 LTS — fixes 'crypto is not defined' from mongoose 9.x (WebCrypto global)
+FROM node:20-alpine AS deps
 
 # Install OS-level build tools needed by native npm packages
 # (e.g., bcrypt, canvas) — not needed here but good practice
@@ -45,7 +45,7 @@ RUN npm ci
 # ── Stage 2: builder ──────────────────────────────────────
 # Purpose: Prune to production-only dependencies
 # We don't need jest, nodemon, eslint, supertest in prod image
-FROM node:18-alpine AS builder
+FROM node:20-alpine AS builder
 
 WORKDIR /app
 
@@ -60,7 +60,7 @@ RUN npm prune --production
 # ── Stage 3: runner ───────────────────────────────────────
 # Purpose: The actual production image — minimal and secure
 # Only this stage is pushed to the registry / deployed
-FROM node:18-alpine AS runner
+FROM node:20-alpine AS runner
 
 # ── Security: Run as non-root user ────────────────────────
 # By default Docker runs as root inside containers.
