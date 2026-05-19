@@ -519,8 +519,10 @@
 
     function formatUptime(seconds) {
       if (!seconds) return '-';
-      const h = Math.floor(seconds / 3600);
-      const m = Math.floor((seconds % 3600) / 60);
+      const secs = parseInt(seconds);
+      if (isNaN(secs)) return '-';
+      const h = Math.floor(secs / 3600);
+      const m = Math.floor((secs % 3600) / 60);
       if (h > 0) return `${h}h ${m}m`;
       return `${m}m`;
     }
@@ -578,7 +580,7 @@
       document.getElementById('activeCount').textContent = stats.active || 0;
 
       const grid = document.getElementById('previewGrid');
-      const active = (data.active || []);
+      const active = (data.deployments || []);
 
       if (active.length === 0) {
         grid.innerHTML = `
