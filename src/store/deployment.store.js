@@ -133,7 +133,7 @@ class DeploymentStore {
         const doc = await Model.findOneAndUpdate(
           { prNumber },
           { $set: { ...updates, updatedAt: new Date() } },
-          { new: true }
+          { returnDocument: 'after' }
         );
         return doc ? doc.toObject() : null;
       } catch (error) {

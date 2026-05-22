@@ -270,7 +270,7 @@ deploymentSchema.statics.upsertByPR = function (prNumber, data) {
     { prNumber },
     { $set: data },
     {
-      new: true,            // Return updated document
+      returnDocument: 'after', // Return updated document
       upsert: true,         // Create if doesn't exist
       runValidators: true,  // Validate on update too
     }
