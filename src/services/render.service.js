@@ -181,6 +181,8 @@ class RenderService {
           { key: 'NODE_ENV', value: 'preview' },
           { key: 'PR_NUMBER', value: String(prNumber) },
           { key: 'BRANCH_NAME', value: branch },
+          { key: 'NODE_VERSION', value: '20' }, // Force Node 20 to fix mongoose crypto error
+          { key: 'NODE_OPTIONS', value: '--experimental-global-webcrypto' }
         ],
       },
     };
