@@ -616,8 +616,10 @@
               <span class="preview-field-label">Created</span>
               <span class="preview-field-value time-ago">${timeAgo(p.createdAt)}</span>
             </div>
+            <div class="meta-row mt-4">
+              ${p.url ? `<a class="preview-url" href="${p.url}/dashboard" target="_blank">🔗 Open Preview →</a>` : ''}
+            </div>
           </div>
-          ${p.url ? `<a class="preview-url" href="${p.url}" target="_blank">🔗 Open Preview →</a>` : ''}
         </div>
       `).join('');
     }
