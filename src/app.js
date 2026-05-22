@@ -250,6 +250,11 @@ app.use('/api/previews', apiLimiter,     previewRoutes);
 
 // ── Dashboard UI (served from /public) ─────────────────────
 app.use(express.static(path.join(__dirname, 'public')));
+
+app.get('/', (_req, res) => {
+  res.redirect('/dashboard');
+});
+
 app.get('/dashboard', (_req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
